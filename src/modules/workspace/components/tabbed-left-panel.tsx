@@ -16,7 +16,7 @@ const TabbedLeftPanel = () => {
     ];
 
     return (
-        <div className="flex h-screen bg-zinc-950">
+        <div className="flex h-full bg-zinc-950">
             {/* Sidebar */}
             <div className="w-12 bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-4 space-y-4">
                 {sidebarItems.map((item, index) => (

@@ -80,10 +80,11 @@ model Workspace {
   ownerId     String      
   owner       User        @relation("UserWorkspaces", fields: [ownerId], references: [id])
 
-  collections Collection[]
-  members     WorkspaceMember[]
-  invites     WorkspaceInvite[]
+  collections  Collection[]
+  members      WorkspaceMember[]
+  invites      WorkspaceInvite[]
   environments Environment[]
+  mockServers  MockServer[]
 
   websocketPresets WebSocketPreset[]
   createdAt   DateTime @default(now())
@@ -236,4 +237,36 @@ model Environment {
 
   workspaceId String
   workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+//
+// ─── MOCK SERVER (STATEFUL VIRTUAL BACKEND) ──────────────────────────────────
+//
+
+model MockServer {
+  id          String         @id @default(cuid())
+  workspaceId String
+  name        String
+  prefix      String         @unique // e.g. "crm-api-v1" → /api/mock/crm-api-v1/users
+  latencyMs   Int            @default(0)   // Simulated latency in ms
+  errorRate   Float          @default(0.0) // 0.0 - 1.0 (e.g. 0.05 = 5% random 500 errors)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  endpoints   MockEndpoint[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @default(now()) @updatedAt
+}
+
+model MockEndpoint {
+  id           String      @id @default(cuid())
+  mockServerId String
+  path         String      // e.g. "/users" — GET lists, POST creates
+  method       REST_METHOD @default(GET)
+  statusCode   Int         @default(200)
+  description  String?
+  dataStore    Json        @default("[]") // The live state: array of records
+  mockServer   MockServer  @relation(fields: [mockServerId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @default(now()) @updatedAt
+
+  @@unique([mockServerId, path, method])
 }

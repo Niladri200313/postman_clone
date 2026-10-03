@@ -9,6 +9,7 @@ import {
   Clock,
   HardDrive,
   CheckCircle,
+  XCircle,
   Copy,
   Download,
   Filter,
@@ -102,8 +103,9 @@ const ResponseViewer = ({ responseData }: Props) => {
     responseData.result?.statusText ?? responseData.requestRun?.statusText;
   const duration: number | undefined =
     responseData.result?.duration ?? responseData.requestRun?.durationMs;
-  const size: number | undefined = responseData.result?.size;
-  const rawBody = responseData.requestRun?.body;
+  const size: number | undefined = responseData?.result?.size;
+  const rawBody = responseData?.requestRun?.body;
+  const responseHeaders = responseData?.requestRun?.headers ?? {};
 
   return (
     <div className="w-full bg-zinc-950 text-white p-6">
@@ -202,10 +204,7 @@ const ResponseViewer = ({ responseData }: Props) => {
                       variant="secondary"
                       className="ml-2 text-xs bg-zinc-700"
                     >
-                      {
-                        Object.keys(responseData.requestRun.headers ?? {})
-                          .length
-                      }
+                      {Object.keys(responseHeaders).length}
                     </Badge>
                   </TabsTrigger>
                   <TabsTrigger
@@ -310,9 +309,7 @@ const ResponseViewer = ({ responseData }: Props) => {
                 <ScrollArea className="h-96">
                   <div className="p-6">
                     <div className="space-y-3">
-                      {Object.entries(
-                        responseData.requestRun.headers ?? {}
-                      ).map(([key, value]) => (
+                      {Object.entries(responseHeaders).map(([key, value]) => (
                         <div
                           key={key}
                           className="flex items-start justify-between py-2 border-b border-zinc-800 last:border-b-0"
@@ -341,32 +338,88 @@ const ResponseViewer = ({ responseData }: Props) => {
               </TabsContent>
 
               <TabsContent value="test" className="mt-0">
-                <div className="p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <CheckCircle className="w-5 h-5 text-green-400" />
-                    <span className="text-green-400 font-medium">
-                      All tests passed
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg">
-                      <span className="text-gray-300">Status code is 200</span>
-                      <CheckCircle className="w-4 h-4 text-green-400" />
+                {(() => {
+                  const tests = [
+                    {
+                      name: "Status code is successful (2xx)",
+                      passed: typeof status === "number" && status >= 200 && status < 300,
+                      details: status ? `Status: ${status} ${statusText || ""}` : "No status received",
+                    },
+                    {
+                      name: "Response time is under 3000ms",
+                      passed: typeof duration === "number" && duration > 0 && duration < 3000,
+                      details: duration ? `${duration} ms` : "Latency unavailable",
+                    },
+                    {
+                      name: "Content-Type header is present",
+                      passed: Boolean(
+                        responseHeaders["content-type"] ||
+                        responseHeaders["Content-Type"]
+                      ),
+                      details:
+                        responseHeaders["content-type"] ||
+                        responseHeaders["Content-Type"] ||
+                        "Missing header",
+                    },
+                    {
+                      name: "Response body received",
+                      passed: rawBody !== null && rawBody !== undefined && rawBody !== "",
+                      details: rawBody ? "Non-empty payload" : "Empty response body",
+                    },
+                  ];
+                  const passedCount = tests.filter((t) => t.passed).length;
+                  const allPassed = passedCount === tests.length;
+
+                  return (
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          {allPassed ? (
+                            <CheckCircle className="w-5 h-5 text-emerald-400" />
+                          ) : (
+                            <XCircle className="w-5 h-5 text-amber-400" />
+                          )}
+                          <span
+                            className={`font-semibold text-sm ${
+                              allPassed ? "text-emerald-400" : "text-amber-400"
+                            }`}
+                          >
+                            {allPassed
+                              ? "All tests passed"
+                              : `${passedCount} of ${tests.length} tests passed`}
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded">
+                          {passedCount}/{tests.length}
+                        </span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {tests.map((t, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex items-center justify-between p-3 rounded-lg border text-xs transition-colors ${
+                              t.passed
+                                ? "bg-zinc-900 border-zinc-800 text-zinc-300"
+                                : "bg-red-950/20 border-red-800/40 text-red-300"
+                            }`}
+                          >
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium text-zinc-200">{t.name}</span>
+                              <span className="text-[11px] text-zinc-500 font-mono">
+                                {t.details}
+                              </span>
+                            </div>
+                            {t.passed ? (
+                              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                            ) : (
+                              <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg">
-                      <span className="text-gray-300">
-                        Response time is less than 3000ms
-                      </span>
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg">
-                      <span className="text-gray-300">
-                        Content-Type is present
-                      </span>
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </TabsContent>
             </Tabs>
           </CardContent>

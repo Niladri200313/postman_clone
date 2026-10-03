@@ -1,17 +1,17 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting'
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting'
 
-type WsMessage = {
+export type WsMessage = {
   id: string
   type: 'sent' | 'received'
   data: any
-  timestamp: Date
+  timestamp: Date | string
   raw?: string
 }
 
-type WsOptions = {
+export type WsOptions = {
   onOpen?: (ev: Event) => void
   onMessage?: (ev: MessageEvent) => void
   onClose?: (ev: CloseEvent) => void
@@ -26,26 +26,26 @@ interface WsStore {
   url: string | null
   status: ConnectionStatus
   error: string | null
-  
-  // Messages
-  messages: WsMessage[]
-  
-  // Connection options
-  options: WsOptions
-  
-  // Reconnection state
-  reconnectAttempts: number
-  maxReconnectAttempts: number
-  reconnectTimeoutId: number | null
-  
-  // Editor draft (persist editor content globally)
-  draftMessage: string
-  
-  // Computed getters
   isConnected: boolean
   isConnecting: boolean
   isReconnecting: boolean
-  
+  isMock: boolean
+
+  // Messages
+  messages: WsMessage[]
+
+  // Connection options
+  options: WsOptions
+
+  // Reconnection state
+  reconnectAttempts: number
+  maxReconnectAttempts: number
+  reconnectTimeoutId: any | null
+  mockTimerId: any | null
+
+  // Editor draft (persist editor content globally)
+  draftMessage: string
+
   // Actions
   connect: (url: string, options?: WsOptions) => void
   disconnect: (code?: number, reason?: string) => void
@@ -53,177 +53,341 @@ interface WsStore {
   clearMessages: () => void
   setError: (error: string | null) => void
   setDraftMessage: (message: string) => void
-  
+
   // Internal actions
   setStatus: (status: ConnectionStatus) => void
-  addMessage: (message: Omit<WsMessage, 'id' | 'timestamp'>) => void
+  addMessage: (message: Omit<WsMessage, 'id' | 'timestamp'> & { timestamp?: Date | string }) => void
   handleReconnect: () => void
   getReadyState: () => number
 }
 
-// SSR-safe initial state
+// Normalize URL to valid ws:// or wss:// or mock://
+export const normalizeWsUrl = (input: string): string => {
+  const trimmed = input.trim()
+  if (!trimmed) return ''
+  if (trimmed === 'mock://echo' || trimmed === 'ws://echo.mock' || trimmed === 'echo.mock') {
+    return 'mock://echo'
+  }
+  if (trimmed.startsWith('ws://') || trimmed.startsWith('wss://') || trimmed.startsWith('mock://')) {
+    return trimmed
+  }
+  if (trimmed.startsWith('https://')) {
+    return 'wss://' + trimmed.slice(8)
+  }
+  if (trimmed.startsWith('http://')) {
+    return 'ws://' + trimmed.slice(7)
+  }
+  if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
+    return `ws://${trimmed}`
+  }
+  return `wss://${trimmed}`
+}
+
+// Initial state
 const getInitialState = () => ({
-  ws: null,
-  url: null,
+  ws: null as WebSocket | null,
+  url: null as string | null,
   status: 'disconnected' as ConnectionStatus,
-  error: null,
-  messages: [],
+  error: null as string | null,
   isConnected: false,
+  isConnecting: false,
+  isReconnecting: false,
+  isMock: false,
+  messages: [] as WsMessage[],
   draftMessage: '',
-  options: {},
+  options: {} as WsOptions,
   reconnectAttempts: 0,
   maxReconnectAttempts: 5,
-  reconnectTimeoutId: null,
+  reconnectTimeoutId: null as any,
+  mockTimerId: null as any,
 })
 
-// Create the store with computed values
 export const useWsStore = create<WsStore>()(
   subscribeWithSelector((set, get) => ({
-    // Initial state
     ...getInitialState(),
 
-    // Computed getters
-    get isConnected() {
-      return get().status === 'connected'
-    },
-    
-    get isConnecting() {
-      return get().status === 'connecting'
-    },
-    
-    get isReconnecting() {
-      return get().status === 'reconnecting'
-    },
-
     // Connect action
-    connect: (url: string, options: WsOptions = {}) => {
+    connect: (rawUrl: string, options: WsOptions = {}) => {
       const state = get()
-      
-      // Close existing connection
-      if (state.ws) {
-        state.ws.close()
-      }
-      
-      // Clear existing timeout
+
+      // Disconnect existing connection cleanly
       if (state.reconnectTimeoutId) {
         clearTimeout(state.reconnectTimeoutId)
       }
+      if (state.mockTimerId) {
+        clearTimeout(state.mockTimerId)
+      }
+      if (state.ws) {
+        state.ws.onclose = null
+        state.ws.onerror = null
+        state.ws.onmessage = null
+        state.ws.onopen = null
+        try {
+          state.ws.close(1000, 'Reconnecting')
+        } catch {
+          // ignore
+        }
+      }
+
+      const url = normalizeWsUrl(rawUrl)
+      if (!url) {
+        set({
+          status: 'error',
+          error: 'Please enter a valid WebSocket URL',
+          isConnected: false,
+          isConnecting: false,
+          isReconnecting: false,
+        })
+        return
+      }
+
+      const isMock = url === 'mock://echo' || url.startsWith('mock://')
 
       set({
         url,
         options,
         status: 'connecting',
         isConnected: false,
+        isConnecting: true,
+        isReconnecting: false,
+        isMock,
         error: null,
-        reconnectAttempts: 0
+        reconnectAttempts: 0,
+        reconnectTimeoutId: null,
       })
 
+      // MOCK SERVER MODE: Instant offline simulated WebSocket
+      if (isMock) {
+        console.log('[Mock WS] Connecting to simulated mock WebSocket:', url)
+        const mockTimer = setTimeout(() => {
+          set({
+            status: 'connected',
+            isConnected: true,
+            isConnecting: false,
+            isReconnecting: false,
+            error: null,
+            mockTimerId: null,
+          })
+
+          get().addMessage({
+            type: 'received',
+            data: {
+              status: 'connected',
+              server: 'PostBoy Mock WebSocket Server (Built-in)',
+              url,
+              time: new Date().toISOString(),
+              message: 'Connected to internal mock echo server! All messages sent will be automatically echoed back.',
+            },
+            raw: JSON.stringify({
+              status: 'connected',
+              server: 'PostBoy Mock WebSocket Server (Built-in)',
+              url,
+              message: 'Connected to internal mock echo server!',
+            }),
+          })
+
+          options.onOpen?.(new Event('open'))
+        }, 200)
+
+        set({ mockTimerId: mockTimer })
+        return
+      }
+
+      // REAL WEBSOCKET MODE
       try {
         const ws = new WebSocket(url)
 
         ws.onopen = (event) => {
-          console.log('WebSocket connected to:', url)
-          set({ 
-            ws, 
-            status: 'connected', 
-            error: null,
+          console.log('[WS] Connected to:', url)
+          set({
+            ws,
+            status: 'connected',
             isConnected: true,
-            reconnectAttempts: 0 
+            isConnecting: false,
+            isReconnecting: false,
+            error: null,
+            reconnectAttempts: 0,
           })
           options.onOpen?.(event)
         }
 
-        ws.onmessage = (event) => {
-          console.log('WebSocket message received:', event.data)
-          
-          // Add to message history
+        ws.onmessage = async (event) => {
+          let payload = event.data
+
+          // Handle Blob / binary data
+          if (payload instanceof Blob) {
+            try {
+              payload = await payload.text()
+            } catch (err) {
+              console.error('Failed to parse Blob WebSocket message:', err)
+            }
+          }
+
+          let parsed = payload
+          try {
+            parsed = JSON.parse(payload)
+          } catch {
+            // keep as string
+          }
+
+          console.log('[WS] Message received:', payload)
           get().addMessage({
             type: 'received',
-            data: event.data,
-            raw: event.data
+            data: parsed,
+            raw: typeof payload === 'string' ? payload : JSON.stringify(payload),
           })
-          
+
           options.onMessage?.(event)
         }
 
         ws.onclose = (event) => {
-          console.log('WebSocket closed:', event.code, event.reason)
-          
-          set({ ws: null })
+          console.log('[WS] Closed:', event.code, event.reason)
+          const currentOptions = get().options
+
+          set({
+            ws: null,
+            isConnected: false,
+            isConnecting: false,
+          })
+
           options.onClose?.(event)
 
-          // Handle reconnection
-          if (options.autoReconnect && event.code !== 1000) {
+          // Auto-reconnect only on abnormal close (not user code 1000)
+          if (currentOptions.autoReconnect && event.code !== 1000 && event.code !== 1005) {
             get().handleReconnect()
           } else {
-            set({ status: 'disconnected' })
+            set({
+              status: 'disconnected',
+              isReconnecting: false,
+            })
           }
         }
 
         ws.onerror = (event) => {
-          console.error('WebSocket error:', event)
-          set({ 
-            status: 'error', 
-            error: 'Connection error occurred' 
+          console.error('[WS] Error:', event)
+          set({
+            status: 'error',
+            isConnected: false,
+            isConnecting: false,
+            error: 'WebSocket connection failed. Ensure the server is running and accessible.',
           })
           options.onError?.(event)
         }
-
       } catch (error) {
-        console.error('Failed to create WebSocket:', error)
-        set({ 
-          status: 'error', 
-          error: error instanceof Error ? error.message : 'Failed to create WebSocket' 
+        console.error('[WS] Failed to construct WebSocket:', error)
+        set({
+          status: 'error',
+          isConnected: false,
+          isConnecting: false,
+          isReconnecting: false,
+          error: error instanceof Error ? error.message : 'Invalid WebSocket URL or failed to connect',
         })
         options.onError?.(error as Error)
       }
     },
 
     // Disconnect action
-    disconnect: (code = 1000, reason = '') => {
+    disconnect: (code = 1000, reason = 'User disconnected') => {
       const state = get()
-      
+
       if (state.reconnectTimeoutId) {
         clearTimeout(state.reconnectTimeoutId)
       }
-      
-      if (state.ws) {
-        state.ws.close(code, reason)
+      if (state.mockTimerId) {
+        clearTimeout(state.mockTimerId)
       }
-      
+
+      if (state.ws) {
+        state.ws.onclose = null
+        state.ws.onerror = null
+        state.ws.onmessage = null
+        state.ws.onopen = null
+        try {
+          state.ws.close(code, reason)
+        } catch {
+          // ignore
+        }
+      }
+
       set({
         ws: null,
         status: 'disconnected',
         isConnected: false,
+        isConnecting: false,
+        isReconnecting: false,
         reconnectTimeoutId: null,
-        reconnectAttempts: 0
+        mockTimerId: null,
+        reconnectAttempts: 0,
+        error: null,
       })
     },
 
     // Send message action
     send: (data: string | object) => {
       const state = get()
-      
+
+      if (state.status !== 'connected') {
+        console.warn('[WS] Cannot send message, WebSocket is not connected')
+        return false
+      }
+
+      const rawString = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
+      let parsed = data
+      if (typeof data === 'string') {
+        try {
+          parsed = JSON.parse(data)
+        } catch {
+          parsed = data
+        }
+      }
+
+      // Add to sent messages history
+      get().addMessage({
+        type: 'sent',
+        data: parsed,
+        raw: rawString,
+      })
+
+      // MOCK ECHO MODE: Simulate server reply
+      if (state.isMock) {
+        setTimeout(() => {
+          let echoReply: any
+          if (typeof parsed === 'object' && parsed !== null) {
+            echoReply = {
+              echo: true,
+              received: parsed,
+              serverTime: new Date().toISOString(),
+              mockMessage: 'Echo response from PostBoy Mock Server',
+            }
+          } else if (String(parsed).toLowerCase().trim() === 'ping') {
+            echoReply = 'pong'
+          } else {
+            echoReply = `Echo: ${parsed}`
+          }
+
+          get().addMessage({
+            type: 'received',
+            data: echoReply,
+            raw: typeof echoReply === 'string' ? echoReply : JSON.stringify(echoReply, null, 2),
+          })
+        }, 120)
+
+        return true
+      }
+
+      // REAL WEBSOCKET MODE
       if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
-        console.warn('WebSocket is not connected')
+        console.warn('[WS] WebSocket readyState is not OPEN')
         return false
       }
 
       try {
-        const message = typeof data === 'string' ? data : JSON.stringify(data)
-        state.ws.send(message)
-        
-        // Add to message history
-        get().addMessage({
-          type: 'sent',
-          data,
-          raw: message
-        })
-        
-        console.log('WebSocket message sent:', message)
+        const payloadToSend = typeof data === 'string' ? data : JSON.stringify(data)
+        state.ws.send(payloadToSend)
+        console.log('[WS] Message sent:', payloadToSend)
         return true
       } catch (error) {
-        console.error('Failed to send message:', error)
+        console.error('[WS] Failed to send message:', error)
         set({ error: 'Failed to send message' })
         return false
       }
@@ -231,7 +395,7 @@ export const useWsStore = create<WsStore>()(
 
     // Clear messages
     clearMessages: () => set({ messages: [] }),
-    
+
     // Draft message (editor)
     setDraftMessage: (message: string) => set({ draftMessage: message }),
 
@@ -239,49 +403,63 @@ export const useWsStore = create<WsStore>()(
     setError: (error: string | null) => set({ error }),
 
     // Set status (internal)
-    setStatus: (status: ConnectionStatus) => set({ status }),
+    setStatus: (status: ConnectionStatus) =>
+      set({
+        status,
+        isConnected: status === 'connected',
+        isConnecting: status === 'connecting',
+        isReconnecting: status === 'reconnecting',
+      }),
 
     // Add message (internal)
-    addMessage: (message: Omit<WsMessage, 'id' | 'timestamp'>) => {
+    addMessage: (message) => {
       const newMessage: WsMessage = {
         ...message,
-        id: crypto.randomUUID(),
-        timestamp: new Date()
+        id: crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
       }
-      
-      set(state => ({
-        messages: [...state.messages, newMessage].slice(-100) // Keep last 100 messages
+
+      set((state) => ({
+        messages: [...state.messages, newMessage].slice(-200), // Keep last 200 messages
       }))
     },
 
     // Handle reconnection (internal)
     handleReconnect: () => {
       const state = get()
-      
+
       if (state.reconnectAttempts >= state.maxReconnectAttempts) {
-        console.log('Max reconnection attempts reached')
-        set({ 
-          status: 'error', 
-          error: 'Max reconnection attempts reached' 
+        console.log('[WS] Max reconnection attempts reached')
+        set({
+          status: 'error',
+          isConnected: false,
+          isConnecting: false,
+          isReconnecting: false,
+          error: 'Connection closed. Max reconnection attempts reached.',
         })
         return
       }
 
-      const delay = (state.options.reconnectDelay || 3000) * Math.pow(1.5, state.reconnectAttempts)
-      
-      set({ 
+      const nextAttempt = state.reconnectAttempts + 1
+      const delay = Math.min((state.options.reconnectDelay || 2000) * Math.pow(1.5, state.reconnectAttempts), 10000)
+
+      set({
         status: 'reconnecting',
-        reconnectAttempts: state.reconnectAttempts + 1
+        isConnected: false,
+        isConnecting: false,
+        isReconnecting: true,
+        reconnectAttempts: nextAttempt,
       })
-      
-      console.log(`Reconnecting in ${delay}ms (attempt ${state.reconnectAttempts + 1}/${state.maxReconnectAttempts})`)
-      
-      const timeoutId = window.setTimeout(() => {
-        if (state.url) {
-          get().connect(state.url, state.options)
+
+      console.log(`[WS] Reconnecting in ${Math.round(delay)}ms (attempt ${nextAttempt}/${state.maxReconnectAttempts})`)
+
+      const timeoutId = setTimeout(() => {
+        const currentState = get()
+        if (currentState.url && currentState.status === 'reconnecting') {
+          currentState.connect(currentState.url, currentState.options)
         }
       }, delay)
-      
+
       set({ reconnectTimeoutId: timeoutId })
     },
 
@@ -289,6 +467,6 @@ export const useWsStore = create<WsStore>()(
     getReadyState: () => {
       const ws = get().ws
       return ws ? ws.readyState : WebSocket.CLOSED
-    }
+    },
   }))
 )

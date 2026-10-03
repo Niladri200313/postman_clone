@@ -6,6 +6,8 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 
 
+import { useWorkspaceStore } from "../store";
+
 const CreateWorkspace = ({
   isModalOpen,
   setIsModalOpen,
@@ -15,16 +17,20 @@ const CreateWorkspace = ({
 }) => {
   const [name, setName] = useState("");
   const { mutateAsync, isPending } = useCreateWorkspace();
+  const { setSelectedWorkspace } = useWorkspaceStore();
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
     try {
-      await mutateAsync(name); 
+      const newWs = await mutateAsync(name); 
+      if (newWs) {
+        setSelectedWorkspace(newWs);
+      }
       toast.success("Workspace created successfully");
       setName("");
       setIsModalOpen(false);
-    } catch (err) {
-      toast.error("Failed to create workspace");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to create workspace");
       console.error("Failed to create workspace:", err);
     }
   };

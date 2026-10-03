@@ -14,6 +14,7 @@ export default function TabBar() {
     GET: "text-green-500",
     POST: "text-blue-500",
     PUT: "text-yellow-500",
+    PATCH: "text-purple-500",
     DELETE: "text-red-500",
   };
 

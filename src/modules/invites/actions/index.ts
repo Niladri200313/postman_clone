@@ -24,29 +24,53 @@ if(!user) throw new Error("Unauthorized")
 
 export const acceptWorkspaceInvite = async (token: string) => {
   const user = await currentUser();
-  if (!user) throw new Error("Unauthorized");
+  if (!user) return { success: false, error: "Unauthorized" };
 
   const invite = await db.workspaceInvite.findUnique({
     where: { token },
   });
 
-  if (!invite) throw new Error("Invalid invite");
+  if (!invite) {
+    return {
+      success: false,
+      error: "This invite link is invalid or has already been used.",
+    };
+  }
 
-  if (!invite.expiresAt || invite.expiresAt < new Date()) throw new Error("Invite expired");
+  if (invite.expiresAt && invite.expiresAt < new Date()) {
+    return {
+      success: false,
+      error: "This invite link has expired.",
+    };
+  }
 
-  await db.workspaceMember.create({
-    data: {
-      userId: user.id,
-      workspaceId: invite.workspaceId,
-      role: MEMBER_ROLE.VIEWER,
+  // Check if user is already a member
+  const existingMember = await db.workspaceMember.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: user.id,
+        workspaceId: invite.workspaceId,
+      },
     },
   });
 
-  await db.workspaceInvite.delete({
-    where: { id: invite.id },
+  // Check if user is the workspace owner
+  const workspace = await db.workspace.findUnique({
+    where: { id: invite.workspaceId },
   });
 
-  
+  const isOwner = workspace?.ownerId === user.id;
+
+  if (!existingMember && !isOwner) {
+    await db.workspaceMember.create({
+      data: {
+        userId: user.id,
+        workspaceId: invite.workspaceId,
+        role: MEMBER_ROLE.VIEWER,
+      },
+    });
+  }
+
   return { success: true };
 };
 

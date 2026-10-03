@@ -18,6 +18,7 @@ export const createCollection = async (workspaceId: string, name: string) => {
 };
 
 export const getCollections = async (workspaceId: string) => {
+  if (!workspaceId) return [];
   const collections = await db.collection.findMany({
     where: {
       workspaceId,

@@ -55,7 +55,7 @@ export const initializeWorkspace = async () => {
 
 export async function getWorkspaces() {
   const user = await currentUser();
-  if (!user) throw new Error("Unauthorized");
+  if (!user) return [];
 
   const workspaces = await db.workspace.findMany({
     where: {
@@ -72,11 +72,29 @@ export async function getWorkspaces() {
 
 export async function createWorkspace(name: string) {
   const user = await currentUser();
-  if (!user) throw new Error("Unauthorized");
+  if (!user) throw new Error("Unauthorized. Please log in first.");
+
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error("Workspace name cannot be empty");
+  }
+
+  const existing = await db.workspace.findUnique({
+    where: {
+      name_ownerId: {
+        name: trimmedName,
+        ownerId: user.id,
+      },
+    },
+  });
+
+  if (existing) {
+    throw new Error("A workspace with this name already exists");
+  }
 
   const workspace = await db.workspace.create({
     data: {
-      name,
+      name: trimmedName,
       ownerId: user.id,
       members: {
         create: {
@@ -92,6 +110,7 @@ export async function createWorkspace(name: string) {
 
 
 export const getWorkspaceById = async (id: string) => {
+  if (!id) return null;
   const workspace = await db.workspace.findUnique({
     where: { id },
     include: {

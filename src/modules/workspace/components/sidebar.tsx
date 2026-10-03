@@ -1,10 +1,14 @@
 import { Button } from '@/components/ui/button';
-import { Archive, Clock, Code, Share2, ExternalLink, HelpCircle, Plus, Search, Upload, Loader } from 'lucide-react';
+import { Archive, Clock, Code, Share2, ExternalLink, HelpCircle, Plus, Search, Loader, Server } from 'lucide-react';
 import React, { useState } from 'react';
 import CreateCollection from '../../collections/components/create-collection';
 import { useCollections } from '@/modules/collections/hooks/collections';
 import EmptyCollections from '../../collections/components/empty-collections';
 import CollectionFolder from '@/modules/collections/components/collection-folder';
+import MockServerPanel from '@/modules/mock/components/mock-server-panel';
+import HistoryPanel from './history-panel';
+import SharePanel from './share-panel';
+import CodePanel from './code-panel';
 
 
 interface Props {
@@ -27,6 +31,7 @@ const TabbedSidebar = ({ currentWorkspace }: Props) => {
 
   const sidebarItems = [
     { icon: Archive, label: 'Collections' },
+    { icon: Server, label: 'Mock' },
     { icon: Clock, label: 'History' },
     { icon: Share2, label: 'Share' },
     { icon: Code, label: 'Code' }
@@ -84,19 +89,40 @@ const TabbedSidebar = ({ currentWorkspace }: Props) => {
           </div>
         );
 
+      case 'Mock':
+        return currentWorkspace?.id ? (
+          <MockServerPanel workspaceId={currentWorkspace.id} />
+        ) : (
+          <div className="p-4 text-zinc-500 text-sm">Select a workspace first</div>
+        );
+
+      case 'History':
+        return <HistoryPanel />;
+
+      case 'Share':
+        return currentWorkspace?.id ? (
+          <SharePanel workspaceId={currentWorkspace.id} workspaceName={currentWorkspace.name} />
+        ) : (
+          <div className="p-4 text-zinc-500 text-sm">Select a workspace first</div>
+        );
+
+      case 'Code':
+        return <CodePanel />;
+
       default:
         return <div className="p-4 text-zinc-400">Select a tab to view content</div>;
     }
   };
 
   return (
-    <div className="flex h-screen bg-zinc-900">
+    <div className="flex h-full bg-zinc-900">
       {/* Sidebar */}
       <div className="w-12 bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-4 space-y-4">
         {sidebarItems.map((item, index) => (
           <div
             key={index}
             onClick={() => setActiveTab(item.label)}
+            title={item.label}
             className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors ${
               activeTab === item.label
                 ? 'bg-indigo-600 text-white'
@@ -111,14 +137,17 @@ const TabbedSidebar = ({ currentWorkspace }: Props) => {
       <div className="flex-1 bg-zinc-900 overflow-y-auto">{renderTabContent()}</div>
 
     
-      <CreateCollection
-        workspaceId={currentWorkspace?.id}
-        isModalOpen={isModalOpen}
-        setIsModalOpen={setIsModalOpen}
-      />
+      {currentWorkspace?.id && (
+        <CreateCollection
+          workspaceId={currentWorkspace.id}
+          isModalOpen={isModalOpen}
+          setIsModalOpen={setIsModalOpen}
+        />
+      )}
       
     </div>
   );
 };
 
 export default TabbedSidebar;
+

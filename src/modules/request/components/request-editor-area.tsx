@@ -4,7 +4,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import KeyValueFormEditor from "./key-value-form";
 import BodyEditor from "./body-editor";
-import { toast } from "sonner";
 
 interface Props {
   tab: RequestTab;
@@ -43,26 +42,21 @@ const RequestEditorArea = ({ tab, updateTab }: Props) => {
   };
 
   const handleHeadersChange = (data: { key: string; value: string; enabled?: boolean }[]) => {
- 
     const filteredHeaders = data.filter((item) => 
       item.enabled !== false && (item.key.trim() || item.value.trim())
     );
     updateTab(tab.id, { headers: JSON.stringify(filteredHeaders) });
-    toast.success("Headers updated successfully")
   };
 
   const handleParametersChange = (data: { key: string; value: string; enabled?: boolean }[]) => {
-  
     const filteredParams = data.filter((item) => 
       item.enabled !== false && (item.key.trim() || item.value.trim())
     );
     updateTab(tab.id, { parameters: JSON.stringify(filteredParams) });
-    toast.success("Parameters updated successfully")
   };
 
   const handleBodyChange = (data: { contentType: string; body?: string }) => {
     updateTab(tab.id, { body: data.body || '' });
-    toast.success("Body updated successfully")
   };
 
   return (
@@ -109,7 +103,8 @@ const RequestEditorArea = ({ tab, updateTab }: Props) => {
       <TabsContent value="body">
         <BodyEditor 
           initialData={getBodyData()}
-          onSubmit={handleBodyChange} 
+          onSubmit={handleBodyChange}
+          onDirectChange={(val) => updateTab(tab.id, { body: val })}
         />
       </TabsContent>
     </Tabs>

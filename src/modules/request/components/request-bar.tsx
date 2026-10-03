@@ -1,5 +1,5 @@
 import React from 'react'
-import { RequestTab } from '../store/useRequestStore'
+import { RequestTab, useRequestPlaygroundStore } from '../store/useRequestStore'
 
 import {
   Select,
@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Send } from 'lucide-react'
-import { useRunRequest } from '../hooks/request'
+import { useRunTabRequest } from '../hooks/request'
 import { toast } from 'sonner'
 
 interface Props {
@@ -22,20 +22,26 @@ interface Props {
 }
 
 const RequestBar = ({ tab, updateTab }: Props) => {
-
-  const {mutateAsync , isPending , isError} = useRunRequest(tab?.requestId!);
+  const { mutateAsync, isPending, isError } = useRunTabRequest();
   const requestColorMap: Record<string, string> = {
     GET: "text-green-500",
     POST: "text-blue-500",
     PUT: "text-yellow-500",
+    PATCH: "text-purple-500",
     DELETE: "text-red-500",
   };
 
   const onSendRequest = async () => {
     try {
-      const res = await mutateAsync();
-      
-      toast.success('Request sent successfully!');
+      const freshTab =
+        useRequestPlaygroundStore.getState().tabs.find((t) => t.id === tab.id) ||
+        tab;
+      const res = await mutateAsync(freshTab);
+      if (res?.error) {
+        toast.error(`Request finished with error: ${res.error}`);
+      } else {
+        toast.success('Request sent successfully!');
+      }
     } catch (error) {
       toast.error('Failed to send request.');
     }
@@ -56,6 +62,7 @@ const RequestBar = ({ tab, updateTab }: Props) => {
               <SelectItem value="GET" className="text-green-500">GET</SelectItem>
               <SelectItem value="POST" className="text-blue-500">POST</SelectItem>
               <SelectItem value="PUT" className="text-yellow-500">PUT</SelectItem>
+              <SelectItem value="PATCH" className="text-purple-500">PATCH</SelectItem>
               <SelectItem value="DELETE" className="text-red-500">DELETE</SelectItem>
             </SelectGroup>
           </SelectContent>

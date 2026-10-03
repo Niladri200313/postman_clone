@@ -23,9 +23,10 @@ import {
 import EditCollectionModal from "./edit-collection";
 import DeleteCollectionModal from "./delete-collection";
 import AddRequestCollectionModal from "./add-request-modal";
-import { useGetAllRequestFromCollection } from "@/modules/request/hooks/request";
+import { useGetAllRequestFromCollection, useDeleteRequest } from "@/modules/request/hooks/request";
 import { REST_METHOD } from "@prisma/client";
 import { useRequestPlaygroundStore } from "@/modules/request/store/useRequestStore";
+import { toast } from "sonner";
 
 interface Props {
   collection: {
@@ -49,6 +50,7 @@ const CollectionFolder = ({ collection }: Props) => {
   } = useGetAllRequestFromCollection(collection.id);
 
   const { openRequestTab } = useRequestPlaygroundStore();
+  const { mutateAsync: deleteRequestMutation } = useDeleteRequest();
 
   const requestColorMap: Record<REST_METHOD, string> = {
     [REST_METHOD.GET]: "text-green-500",
@@ -206,11 +208,26 @@ const CollectionFolder = ({ collection }: Props) => {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="w-32">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRequestTab(request);
+                            }}
+                          >
                             <Edit className="text-blue-400 mr-2 w-3 h-3" />
-                            Edit
+                            Open
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await deleteRequestMutation(request.id);
+                                toast.success("Request deleted successfully");
+                              } catch {
+                                toast.error("Failed to delete request");
+                              }
+                            }}
+                          >
                             <Trash className="text-red-400 mr-2 w-3 h-3" />
                             Delete
                           </DropdownMenuItem>

@@ -37,11 +37,24 @@ const WorkSpace = () => {
   }
 
   if (!workspaces || workspaces.length === 0) {
-    return <div>No workspace found</div>;
+    return (
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-indigo-400/50 text-indigo-400 hover:bg-indigo-400/10 text-xs"
+          onClick={() => setIsModalOpen(true)}
+        >
+          <Plus size={14} className="mr-1 text-indigo-400" />
+          Create Workspace
+        </Button>
+        <CreateWorkspace isModalOpen={isModalOpen} setIsModalOpen={setIsModalOpen} />
+      </div>
+    );
   }
 
   return (
-    <>
+    <div className="flex items-center space-x-1">
       <Hint label="Change Workspace">
         <Select
           value={selectedWorkspace?.id}
@@ -65,7 +78,14 @@ const WorkSpace = () => {
             <Separator className="my-1" />
             <div className="p-2 flex flex-row justify-between items-center">
               <span className="text-sm font-semibold text-zinc-600">My Workspaces</span>
-              <Button size="icon" variant="outline" onClick={() => setIsModalOpen(true)}>
+              <Button
+                size="icon"
+                variant="outline"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  setIsModalOpen(true);
+                }}
+              >
                 <Plus size={16} className="text-indigo-400" />
               </Button>
             </div>
@@ -73,8 +93,19 @@ const WorkSpace = () => {
         </Select>
       </Hint>
 
+      <Hint label="Create New Workspace">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 hover:bg-indigo-400/10 text-indigo-400"
+          onClick={() => setIsModalOpen(true)}
+        >
+          <Plus size={16} />
+        </Button>
+      </Hint>
+
       <CreateWorkspace isModalOpen={isModalOpen} setIsModalOpen={setIsModalOpen} />
-    </>
+    </div>
   );
 };
 

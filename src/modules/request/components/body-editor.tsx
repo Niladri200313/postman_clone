@@ -48,12 +48,14 @@ interface BodyEditorProps {
     body?: string
   }
   onSubmit: (data: BodyEditorFormData) => void
+  onDirectChange?: (body: string) => void
   className?: string
 }
 
 const BodyEditor: React.FC<BodyEditorProps> = ({
   initialData = { contentType: 'application/json', body: '' },
   onSubmit,
+  onDirectChange,
   className
 }) => {
   const [copied, setCopied] = useState(false)
@@ -78,7 +80,11 @@ const BodyEditor: React.FC<BodyEditorProps> = ({
 
   // Handle editor value changes
   const handleEditorChange = (value?: string) => {
-    form.setValue('body', value || '', { shouldValidate: true })
+    const val = value || ''
+    form.setValue('body', val, { shouldValidate: true })
+    if (onDirectChange) {
+      onDirectChange(val)
+    }
   }
 
   // Handle copy
@@ -120,7 +126,9 @@ const BodyEditor: React.FC<BodyEditorProps> = ({
       });
 
       if (result?.jsonBody) {
-        form.setValue('body', JSON.stringify(result.jsonBody, null, 2));
+        const str = JSON.stringify(result.jsonBody, null, 2);
+        form.setValue('body', str);
+        if (onDirectChange) onDirectChange(str);
       }
       setShowGenerateDialog(false);
       setPrompt('');
@@ -129,12 +137,12 @@ const BodyEditor: React.FC<BodyEditorProps> = ({
     }
   }
 
-
   const handleFormat = () => {
     if (contentType === 'application/json' && bodyValue) {
       try {
         const formatted = JSON.stringify(JSON.parse(bodyValue), null, 2)
         form.setValue('body', formatted)
+        if (onDirectChange) onDirectChange(formatted)
       } catch (error) {
         console.error('Invalid JSON format')
       }
@@ -144,6 +152,7 @@ const BodyEditor: React.FC<BodyEditorProps> = ({
   // Reset
   const handleReset = () => {
     form.setValue('body', '')
+    if (onDirectChange) onDirectChange('')
   }
 
   const contentTypeOptions = [
